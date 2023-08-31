@@ -3,7 +3,7 @@ $websiteToTest = "www.google.com"
 $websiteProtocol = "https://"
 
 # Define the path for the log file
-$logFilePath = "C:\Users\TimForbes\Downloads\InternetConnectivityReport2.txt"
+$logFilePath = "%userprofile%\Downloads\InternetConnectivityReport2.txt"
 
 # Get the current date and time for logging
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
