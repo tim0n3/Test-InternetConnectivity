@@ -1,105 +1,44 @@
 using System;
 using System.IO;
-using System.Net;
+using System.Net.Http;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 class Program
 {
-    static void Main()
+    static string websiteToTest = "www.google.com";
+    static string websiteProtocol = "https://";
+
+    static string logFileName = "InternetConnectivityReport.txt";
+    static string logFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", logFileName);
+
+    static string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+    static async Task Main()
     {
-        // Define the website to test
-        string websiteToTest = "www.google.com";
-        string websiteProtocol = "https://";
-
-        // Define the path for the log file
-        string logFilePath = "C:\\Path\\To\\InternetConnectivityReport.txt";
-
-        // Get the current date and time for logging
-        string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-
-        // Function to check internet connectivity
-        bool TestInternetConnection()
-        {
-            try
-            {
-                using (var client = new WebClient())
-                using (var stream = client.OpenRead(websiteToTest))
-                {
-                    return true;
-                }
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        // Function to test DNS resolution
-        bool TestDNSResolution()
-        {
-            try
-            {
-                IPAddress[] addresses = Dns.GetHostAddresses(websiteToTest);
-                return addresses.Length > 0;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        // Function to count hops to the website
-        int GetHopCount()
-        {
-            try
-            {
-                ProcessStartInfo psi = new ProcessStartInfo("tracert", websiteToTest);
-                psi.RedirectStandardOutput = true;
-                psi.UseShellExecute = false;
-                psi.CreateNoWindow = true;
-
-                Process process = new Process();
-                process.StartInfo = psi;
-                process.Start();
-
-                string output = process.StandardOutput.ReadToEnd();
-                string[] lines = output.Split('\n');
-
-                // Subtract 2 for header lines
-                return lines.Length - 2;
-            }
-            catch
-            {
-                return -1; // Tracert not available or failed
-            }
-        }
-
-        // Check internet connectivity
-        bool internetConnected = TestInternetConnection();
-
-        // Check DNS resolution
+        bool internetConnected = await TestInternetConnectionAsync();
         bool dnsResolved = TestDNSResolution();
+        bool browserConnected = await TestBrowserConnectionAsync();
 
-        // Get the hop count
-        int hopCount = GetHopCount();
+        string networkSpeedResult = browserConnected ? await TestNetworkSpeedAsync() : "Network speed test skipped due to HTTPS test failure.";
 
-        // Create a report
         string report = $@"
 Internet Connectivity Report
 Timestamp: {timestamp}
 
 Internet Connectivity Status: {(internetConnected ? "Connected" : "Disconnected")}
 DNS Resolution Status: {(dnsResolved ? "Resolved" : "Not Resolved")}
-Hop Count to {websiteToTest}: {hopCount}
+Hop Count to {websiteToTest}: {GetHopCount()}
+Browser Connection Status: {(browserConnected ? "Connected" : "Disconnected")}
+Network Speed Test: {networkSpeedResult}
 ";
 
-        // Log the report to a file
         File.AppendAllText(logFilePath, report);
-
-        // Display the report in the console
         Console.WriteLine(report);
 
-        // Check if internet is disconnected and suggest troubleshooting steps
         if (!internetConnected)
         {
             Console.WriteLine("Troubleshooting Steps:");
@@ -107,6 +46,126 @@ Hop Count to {websiteToTest}: {hopCount}
             Console.WriteLine("2. Restart your router or modem.");
             Console.WriteLine("3. Disable and re-enable your network adapter.");
             Console.WriteLine("4. Contact your Internet Service Provider (ISP) for assistance.");
+        }
+    }
+
+    static async Task<bool> TestInternetConnectionAsync()
+    {
+        try
+        {
+            using (Ping ping = new Ping())
+            {
+                PingReply reply = await ping.SendPingAsync(websiteToTest, 1000); // 1000ms timeout
+                return reply.Status == IPStatus.Success;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    static bool TestDNSResolution()
+    {
+        try
+        {
+            IPHostEntry hostEntry = Dns.GetHostEntry(websiteToTest);
+            return hostEntry.AddressList.Length > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    static int GetHopCount()
+    {
+        try
+        {
+            Process tracertProcess = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "tracert",
+                    Arguments = websiteToTest,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+            tracertProcess.Start();
+            string output = tracertProcess.StandardOutput.ReadToEnd();
+            tracertProcess.WaitForExit();
+            return output.Split('\n').Length - 2; // Subtract 2 for header lines
+        }
+        catch
+        {
+            return -1; // Tracert not available
+        }
+    }
+
+    static async Task<bool> TestBrowserConnectionAsync()
+    {
+        try
+        {
+            using (HttpClient httpClient = new HttpClient())
+            {
+                httpClient.Timeout = TimeSpan.FromMilliseconds(5000); // 5000ms timeout
+                HttpResponseMessage response = await httpClient.GetAsync($"{websiteProtocol}{websiteToTest}");
+                return response.IsSuccessStatusCode;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    static async Task<string> TestNetworkSpeedAsync()
+    {
+        string speedtestExePath = "speedtest.exe";
+
+        if (!File.Exists(speedtestExePath))
+        {
+            Console.WriteLine("Downloading Speedtest CLI...");
+            string zipFileUrl = "https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-win64.zip";
+            string zipFilePath = "speedtest.zip";
+            using (HttpClient client = new HttpClient())
+            {
+                byte[] zipData = await client.GetByteArrayAsync(zipFileUrl);
+                File.WriteAllBytes(zipFilePath, zipData);
+            }
+            System.IO.Compression.ZipFile.ExtractToDirectory(zipFilePath, ".");
+            File.Delete(zipFilePath);
+        }
+
+        try
+        {
+            Process speedtestProcess = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = speedtestExePath,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+            speedtestProcess.Start();
+            string output = speedtestProcess.StandardOutput.ReadToEnd();
+            speedtestProcess.WaitForExit();
+
+            Regex downloadRegex = new Regex("Download:\\s+(\\d+\\.\\d+)\\s+Mbps");
+            Regex uploadRegex = new Regex("Upload:\\s+(\\d+\\.\\d+)\\s+Mbps");
+
+            string downloadSpeed = downloadRegex.Match(output).Groups[1].Value;
+            string uploadSpeed = uploadRegex.Match(output).Groups[1].Value;
+
+            return $"Download Speed: {downloadSpeed} Mbps, Upload Speed: {uploadSpeed} Mbps";
+        }
+        catch
+        {
+            return "Speed test failed";
         }
     }
 }
