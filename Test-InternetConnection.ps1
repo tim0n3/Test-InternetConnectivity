@@ -2,8 +2,9 @@
 $websiteToTest = "www.google.com"
 $websiteProtocol = "https://"
 
-# Define the path for the log file
-$logFilePath = "%userprofile%\Downloads\InternetConnectivityReport2.txt"
+# Construct the log file path in the user's Downloads folder
+$logFileName = "InternetConnectivityReport.txt"
+$logFilePath = Join-Path -Path $env:USERPROFILE -ChildPath "Downloads\$logFileName"
 
 # Get the current date and time for logging
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -57,17 +58,50 @@ function Test-BrowserConnection {
     }
 }
 
+# Function to test network speed using Speedtest.exe
+function Test-NetworkSpeed {
+    $speedtestExePath = ".\speedtest.exe"
+
+    # Check if speedtest.exe exists, if not, download and unzip it
+    if (-not (Test-Path -Path $speedtestExePath)) {
+        Write-Host "Downloading Speedtest CLI..."
+        $zipFileUrl = "https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-win64.zip"
+        $zipFilePath = ".\speedtest.zip"
+        Invoke-WebRequest -Uri $zipFileUrl -OutFile $zipFilePath
+        Expand-Archive -Path $zipFilePath -DestinationPath . -Force
+        Remove-Item -Path $zipFilePath -Force
+    }
+
+    try {
+        $speedtestResult = .\speedtest.exe
+
+        # Extract relevant information using regular expressions
+        $downloadSpeed = $speedtestResult | Select-String "Download:\s+(\d+\.\d+)\s+Mbps" | ForEach-Object { $_.Matches.Groups[1].Value }
+        $uploadSpeed = $speedtestResult | Select-String "Upload:\s+(\d+\.\d+)\s+Mbps" | ForEach-Object { $_.Matches.Groups[1].Value }
+
+        return "Download Speed: $downloadSpeed Mbps, Upload Speed: $uploadSpeed Mbps"
+    }
+    catch {
+        return "Speed test failed"
+    }
+}
+
 # Check internet connectivity
 $internetConnected = Test-InternetConnection
 
 # Check DNS resolution
 $dnsResolved = Test-DNSResolution
 
-# Get the hop count
-$hopCount = Get-HopCount
-
 # Emulate a browser connection
 $browserConnected = Test-BrowserConnection
+
+# If the HTTPS test succeeds, perform the network speed test
+if ($browserConnected) {
+    $networkSpeedResult = Test-NetworkSpeed
+}
+else {
+    $networkSpeedResult = "Network speed test skipped due to HTTPS test failure."
+}
 
 # Create a report
 $report = @"
@@ -76,8 +110,9 @@ Timestamp: $timestamp
 
 Internet Connectivity Status: $(if ($internetConnected) { "Connected" } else { "Disconnected" })
 DNS Resolution Status: $(if ($dnsResolved) { "Resolved" } else { "Not Resolved" })
-Hop Count to $websiteToTest - $hopCount
+Hop Count to $($websiteToTest): $(Get-HopCount)
 Browser Connection Status: $(if ($browserConnected) { "Connected" } else { "Disconnected" })
+Network Speed Test: $networkSpeedResult
 "@
 
 # Log the report to a file
