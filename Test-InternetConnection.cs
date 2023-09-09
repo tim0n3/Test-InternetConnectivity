@@ -148,7 +148,7 @@ Network Speed Test: {networkSpeedResult}
                     FileName = speedtestExePath,
                     RedirectStandardOutput = true,
                     UseShellExecute = false,
-                    CreateNoWindow = true
+                    CreateNoWindow = true,
                     Arguments = "--accept-gdpr --accept-license"
                 }
             };
