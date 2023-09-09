@@ -73,7 +73,7 @@ function Test-NetworkSpeed {
     }
 
     try {
-        $speedtestResult = .\speedtest.exe
+        $speedtestResult = .\speedtest.exe --accept-gdpr --accept-license
 
         # Extract relevant information using regular expressions
         $downloadSpeed = $speedtestResult | Select-String "Download:\s+(\d+\.\d+)\s+Mbps" | ForEach-Object { $_.Matches.Groups[1].Value }
