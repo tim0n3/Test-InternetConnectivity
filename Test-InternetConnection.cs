@@ -149,6 +149,7 @@ Network Speed Test: {networkSpeedResult}
                     RedirectStandardOutput = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
+                    Arguments = "--accept-gdpr --accept-license"
                 }
             };
             speedtestProcess.Start();
